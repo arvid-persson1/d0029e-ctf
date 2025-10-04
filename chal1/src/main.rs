@@ -39,12 +39,12 @@ async fn main() -> Result<(), ScanError> {
             println!("Fetching ticket {next_id}...");
         }
 
-        match scan(&client, index_url.clone(), next_id).await {
-            Ok(Scan::Success { flag, id }) => {
+        match scan(&client, index_url.clone(), next_id).await? {
+            Scan::Success { flag, id } => {
                 println!("Found flag: {flag} (ticket #{id})");
                 return Ok(());
             }
-            Ok(Scan::Failure { username, ids }) => {
+            Scan::Failure { username, ids } => {
                 if verbose {
                     println!(
                         "Searched user \"{username}\", eliminated {} tickets.",
@@ -55,7 +55,6 @@ async fn main() -> Result<(), ScanError> {
                     _ = checked_ids.skip(id);
                 }
             }
-            Err(e) => return Err(e),
         }
     }
 }
