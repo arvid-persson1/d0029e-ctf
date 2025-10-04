@@ -6,7 +6,7 @@ use thiserror::Error;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Scan {
-    Success { flag: Box<str>, id: usize, },
+    Success { flag: Box<str>, id: usize },
     Failure { username: Box<str>, ids: Vec<usize> },
 }
 
@@ -95,7 +95,6 @@ fn get_username(html: &Html) -> Result<Box<str>, ScanError> {
 }
 
 fn process_tickets(username: Box<str>, html: &Html) -> Result<Scan, ScanError> {
-    // TODO: parallelize?
     let tickets = html.select(selector_ticket()).map(|e| parse_ticket(&e));
 
     let mut ids = Vec::new();
@@ -107,7 +106,10 @@ fn process_tickets(username: Box<str>, html: &Html) -> Result<Scan, ScanError> {
         } = ticket?;
         let pat = regex_flag();
         if let Some(flag) = capture(pat, &header).or_else(|| capture(pat, &description)) {
-            return Ok(Scan::Success { flag: flag.into(), id });
+            return Ok(Scan::Success {
+                flag: flag.into(),
+                id,
+            });
         } else {
             ids.push(id);
         }

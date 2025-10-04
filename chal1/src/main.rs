@@ -27,9 +27,8 @@ async fn main() -> Result<(), ScanError> {
     let Cli {
         index_url,
         ticket_limit,
-        verbose
+        verbose,
     } = Cli::parse();
-    // TODO: is cookie store necessary?
     let client = Client::builder()
         .cookie_store(true)
         .redirect(Policy::limited(1))
@@ -37,12 +36,13 @@ async fn main() -> Result<(), ScanError> {
         .expect("Failed to initialize client.");
 
     let mut checked_ids = SkipSeq::with_capacity(1, 1_000_000);
+    // Scanning could be made parallel, but non-trivially and ideally with cancellation.
     loop {
         let next_id = checked_ids.next();
         if next_id > ticket_limit {
             panic!("Failed to find flag in the first {ticket_limit} tickets.");
         } else if verbose {
-            println!("Fetching ticket {next_id}");
+            println!("Fetching ticket {next_id}...");
         }
 
         match scan(&client, index_url.clone(), next_id).await {
@@ -52,7 +52,10 @@ async fn main() -> Result<(), ScanError> {
             }
             Ok(Scan::Failure { username, ids }) => {
                 if verbose {
-                    println!("Searched user \"{username}\", eliminated {} tickets.", ids.len());
+                    println!(
+                        "Searched user \"{username}\", eliminated {} tickets.",
+                        ids.len()
+                    );
                 }
                 for id in ids {
                     _ = checked_ids.skip(id);
