@@ -49,8 +49,10 @@ impl SkipSeq {
                 let needed = i - self.skip.len();
                 self.skip.reserve(needed);
                 self.skip.extend(repeat(false).take(needed));
+                self.skip.push(true);
+            } else {
+                self.skip[i] = true;
             }
-            self.skip[i] = true;
             true
         } else {
             false
