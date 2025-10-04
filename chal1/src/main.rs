@@ -46,7 +46,7 @@ async fn main() -> Result<(), ScanError> {
             }
             Ok(Scan::NotFound(ids)) => {
                 for id in ids {
-                    assert!(checked_ids.skip(id));
+                    _ = checked_ids.skip(id);
                 }
             }
             Err(e) => return Err(e),

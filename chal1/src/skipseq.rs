@@ -1,4 +1,4 @@
-use std::iter::repeat;
+use thiserror::Error;
 
 // TODO:
 // `BitVec` would have a smaller memory footprint.
@@ -9,6 +9,14 @@ pub struct SkipSeq {
     passed: usize,
     offset: usize,
     skip: Vec<bool>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Error)]
+pub enum SkipError {
+    #[error("{0} was already skipped.")]
+    AlreadySkipped(usize),
+    #[error("{0} was already passed.")]
+    AlreadyPassed(usize),
 }
 
 impl SkipSeq {
@@ -42,21 +50,22 @@ impl SkipSeq {
         res
     }
 
-    pub fn skip(&mut self, n: usize) -> bool {
-        if n >= self.peek() {
-            let i = n - self.passed;
-            if i >= self.skip.len() {
-                let needed = i - self.skip.len();
-                self.skip.reserve(needed);
-                self.skip.extend(repeat(false).take(needed));
-                self.skip.push(true);
-            } else {
-                self.skip[i] = true;
-            }
-            true
-        } else {
-            false
+    pub fn skip(&mut self, n: usize) -> Result<(), SkipError> {
+        if n < self.peek() {
+            return Err(SkipError::AlreadyPassed(n));
         }
+
+        let i = n - self.passed;
+        if self.skip.get(i).copied().unwrap_or_default() {
+            return Err(SkipError::AlreadySkipped(n));
+        }
+
+        if i >= self.skip.len() {
+            self.skip.resize(i + 1, false);
+        }
+
+        self.skip[i] = true;
+        Ok(())
     }
 
     // TODO:
