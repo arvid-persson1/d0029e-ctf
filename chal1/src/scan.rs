@@ -6,8 +6,8 @@ use thiserror::Error;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Scan {
-    Flag(Box<str>),
-    NotFound(Vec<usize>),
+    Success { flag: Box<str>, id: usize, },
+    Failure { username: Box<str>, ids: Vec<usize> },
 }
 
 #[derive(Debug, Error)]
@@ -71,15 +71,15 @@ pub async fn scan(client: &Client, index_url: Url, id: usize) -> Result<Scan, Sc
 
     let user_page = client
         .post(index_url)
-        .form(&[("username", username)])
+        .form(&[("username", &username)])
         .send()
         .await?
         .text()
         .await?;
-    process_tickets(&Html::parse_document(&user_page))
+    process_tickets(username, &Html::parse_document(&user_page))
 }
 
-fn get_username(html: &Html) -> Result<String, ScanError> {
+fn get_username(html: &Html) -> Result<Box<str>, ScanError> {
     let name_field = html
         .select(selector_meta())
         .next()
@@ -90,11 +90,11 @@ fn get_username(html: &Html) -> Result<String, ScanError> {
         .ok_or(ScanError::UnexpectedFormat)?;
 
     capture(regex_username_field(), name_field)
-        .map(ToOwned::to_owned)
+        .map(Into::into)
         .ok_or(ScanError::UnexpectedFormat)
 }
 
-fn process_tickets(html: &Html) -> Result<Scan, ScanError> {
+fn process_tickets(username: Box<str>, html: &Html) -> Result<Scan, ScanError> {
     // TODO: parallelize?
     let tickets = html.select(selector_ticket()).map(|e| parse_ticket(&e));
 
@@ -107,13 +107,13 @@ fn process_tickets(html: &Html) -> Result<Scan, ScanError> {
         } = ticket?;
         let pat = regex_flag();
         if let Some(flag) = capture(pat, &header).or_else(|| capture(pat, &description)) {
-            return Ok(Scan::Flag(flag.into()));
+            return Ok(Scan::Success { flag: flag.into(), id });
         } else {
             ids.push(id);
         }
     }
 
-    Ok(Scan::NotFound(ids))
+    Ok(Scan::Failure { username, ids })
 }
 
 struct Ticket {
