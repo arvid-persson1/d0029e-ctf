@@ -14,9 +14,6 @@ use scan::*;
 struct Cli {
     /// The URL to the index page.
     index_url: Url,
-    /// Maxmimum number of tickets to look at.
-    #[arg(default_value_t = usize::MAX)]
-    ticket_limit: usize,
     #[arg(short, long)]
     /// Prints information about progress.
     verbose: bool,
@@ -26,7 +23,6 @@ struct Cli {
 async fn main() -> Result<(), ScanError> {
     let Cli {
         index_url,
-        ticket_limit,
         verbose,
     } = Cli::parse();
     let client = Client::builder()
@@ -35,13 +31,11 @@ async fn main() -> Result<(), ScanError> {
         .build()
         .expect("Failed to initialize client.");
 
-    let mut checked_ids = SkipSeq::with_capacity(1, 1_000_000);
+    let mut checked_ids = SkipSeq::new(1);
     // Scanning could be made parallel, but non-trivially and ideally with cancellation.
     loop {
         let next_id = checked_ids.next();
-        if next_id > ticket_limit {
-            panic!("Failed to find flag in the first {ticket_limit} tickets.");
-        } else if verbose {
+        if verbose {
             println!("Fetching ticket {next_id}...");
         }
 
