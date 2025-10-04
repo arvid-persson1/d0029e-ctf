@@ -1,3 +1,5 @@
+use std::iter::repeat;
+
 // TODO:
 // `BitVec` would have a smaller memory footprint.
 // `BTreeSet` or similar would have better performance for longer sequential skips.
@@ -43,7 +45,11 @@ impl SkipSeq {
     pub fn skip(&mut self, n: usize) -> bool {
         if n >= self.peek() {
             let i = n - self.passed;
-            self.skip.reserve(i - self.skip.capacity() + 1);
+            if i >= self.skip.len() {
+                let needed = i - self.skip.len();
+                self.skip.reserve(needed);
+                self.skip.extend(repeat(false).take(needed));
+            }
             self.skip[i] = true;
             true
         } else {
