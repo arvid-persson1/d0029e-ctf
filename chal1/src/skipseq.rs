@@ -43,7 +43,7 @@ impl SkipSeq {
     pub fn skip(&mut self, n: usize) -> bool {
         if n >= self.peek() {
             let i = n - self.passed;
-            self.skip.reserve(i - self.skip.capacity());
+            self.skip.reserve(i - self.skip.capacity() + 1);
             self.skip[i] = true;
             true
         } else {
