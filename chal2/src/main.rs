@@ -1,11 +1,11 @@
 use bytes::Bytes;
 use clap::Parser;
+use regex::Regex;
 use reqwest::{Client, Error as ReqwestError, Url, redirect::Policy};
 use serde::Deserialize;
 use serde_json::from_slice as json_from_slice;
 use std::sync::{
-    OnceLock,
-    Arc,
+    Arc, OnceLock,
     atomic::{AtomicUsize, Ordering},
 };
 use thiserror::Error;
@@ -13,9 +13,9 @@ use tokio::{
     spawn,
     sync::mpsc::{Receiver, Sender, channel},
 };
-use regex::Regex;
 
 const BUFFER_SIZE: usize = 100;
+const BUFFER_CAPACITY_WARNING: usize = 10;
 const NUM_THREADS: usize = 10;
 
 #[derive(Parser)]
@@ -98,6 +98,8 @@ enum ScanError {
     Io(#[from] ReqwestError),
     #[error("Unknown JSON schema: {0:?}")]
     UnknownSchema(Bytes),
+    #[error("Server responded with an error: {0}")]
+    Response(Box<str>),
 }
 
 async fn fetch_tickets(
@@ -119,24 +121,41 @@ async fn fetch_tickets(
             client.get(url).send().await?.bytes().await
         }
 
+        fn check_capacity(verbose: bool, tx: &Sender<Result<Ticket, ScanError>>) {
+            if verbose {
+                let capacity = tx.capacity();
+                if capacity <= BUFFER_CAPACITY_WARNING {
+                    eprintln!("Buffer nearly full ({capacity} left).");
+                }
+            }
+        }
+
         // If receiver has closed, these errors are not relevant anymore since the flag is found.
         match fetch(&client, ticket_url).await {
             Ok(bytes) => {
-                if let Ok(ticket) = json_from_slice(&bytes)
-                    && tx.send(Ok(ticket)).await.is_err()
-                {
-                    // Receiver has closed: flag is found.
-                    break;
-                } else if let Ok(ErrorResponse { error }) = json_from_slice(&bytes)
-                    && &*error == "Ticket not found"
-                {
-                    // No more tickets: will be handled in `main`.
-                    break;
+                if let Ok(ticket) = json_from_slice(&bytes) {
+                    check_capacity(verbose, &tx);
+                    if tx.send(Ok(ticket)).await.is_err() {
+                        // Receiver has closed: flag is found.
+                        break;
+                    }
+                } else if let Ok(ErrorResponse { error }) = json_from_slice(&bytes) {
+                    if &*error == "Ticket not found" {
+                        // No more tickets: will be handled in `main`.
+                        break;
+                    } else {
+                        check_capacity(verbose, &tx);
+                        _ = tx.send(Err(ScanError::Response(error)));
+                    }
                 } else {
+                    check_capacity(verbose, &tx);
                     _ = tx.send(Err(ScanError::UnknownSchema(bytes)));
                 }
             }
-            Err(e) => _ = tx.send(Err(e.into())),
+            Err(e) => {
+                check_capacity(verbose, &tx);
+                _ = tx.send(Err(e.into()))
+            }
         }
     }
 }
@@ -162,8 +181,11 @@ async fn process_tickets(mut rx: Receiver<Result<Ticket, ScanError>>) -> Result<
             subject,
             description,
         } = ticket?;
-        if let Some(flag) = regex_flag(&*subject).or_else(|| regex_flag(&*description)) {
-            return Ok(Scan::Success { flag: flag.into(), id })
+        if let Some(flag) = regex_flag(&subject).or_else(|| regex_flag(&description)) {
+            return Ok(Scan::Success {
+                flag: flag.into(),
+                id,
+            });
         }
     }
 
