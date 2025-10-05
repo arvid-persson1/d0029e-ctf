@@ -14,9 +14,9 @@ use tokio::{
     sync::mpsc::{Receiver, Sender, channel},
 };
 
-const BUFFER_SIZE: usize = 100;
-const BUFFER_CAPACITY_WARNING: usize = 10;
-const NUM_THREADS: usize = 10;
+const BUFFER_SIZE: usize = 16;
+const BUFFER_CAPACITY_WARNING: usize = 4;
+const NUM_THREADS: usize = 64;
 
 #[derive(Parser)]
 struct Cli {
@@ -48,10 +48,10 @@ async fn main() -> Result<(), ScanError> {
         .build()
         .expect("Failed to initialize client.");
 
+    // The username isn't relevant.
     client
         .post(index_url.clone())
-        // TODO: change name
-        .form(&[("username", "foo")])
+        .form(&[("username", "")])
         .send()
         .await
         .expect("Failed to get session key.");
@@ -72,9 +72,6 @@ async fn main() -> Result<(), ScanError> {
             fetch_tickets(tx, client, index_url, counter, verbose).await
         }));
     }
-
-    // TODO: remove?
-    drop(tx);
 
     match process_tickets(rx).await? {
         Scan::Success { flag, id } => {
